@@ -69,9 +69,6 @@
         }
         .slider-handle:active .slider-circle { transform: translate(-50%, -50%) scale(1.1); }
 
-        /* Agar rasm zoom qilingan bo'lsa, sliderni yashirish yoki xira qilish mumkin (ixtiyoriy) */
-        .slider-locked .slider-handle { opacity: 0.3; pointer-events: none; }
-
         .loader {
             width: 30px; height: 30px; border: 2px solid #333; 
             border-top: 2px solid #fff; border-radius: 50%;
@@ -248,13 +245,12 @@
             renderGallery(catId);
         }
 
-        // === YANGILANGAN ZOOM ENGINE (Google Maps Style) ===
+        // === YANGILANGAN ZOOM ENGINE ===
         class ZoomController {
             constructor(containerId) {
                 this.container = document.getElementById(containerId);
                 this.target = this.container.querySelector('.zoom-container');
                 
-                // State variables (Holat o'zgaruvchilari)
                 this.scale = 1;
                 this.panning = false;
                 this.pointX = 0;
@@ -262,7 +258,6 @@
                 this.startX = 0;
                 this.startY = 0;
                 
-                // Zoom holati
                 this.lastScale = 1;
                 this.lastPointX = 0;
                 this.lastPointY = 0;
@@ -271,12 +266,12 @@
             }
 
             init() {
-                // Eventlarni ulash
-                this.container.addEventListener('touchstart', (e) => this.handleStart(e), { passive: false });
-                this.container.addEventListener('touchmove', (e) => this.handleMove(e), { passive: false });
-                this.container.addEventListener('touchend', (e) => this.handleEnd(e));
+                // Touch events
+                this.container.addEventListener('touchstart', (e) => this.handleTouchStart(e), { passive: false });
+                this.container.addEventListener('touchmove', (e) => this.handleTouchMove(e), { passive: false });
+                this.container.addEventListener('touchend', (e) => this.handleTouchEnd(e));
                 
-                // Double tap (Ikki marta bosish)
+                // Double tap
                 let lastTap = 0;
                 this.container.addEventListener('touchend', (e) => {
                     if (e.changedTouches.length === 0) return;
@@ -284,18 +279,28 @@
                     const tapLength = currentTime - lastTap;
                     if (tapLength < 300 && tapLength > 0 && Math.abs(this.scale - 1) < 0.1) {
                         e.preventDefault();
-                        this.smoothZoom(2.5); // 2.5x ga yaqinlashish
+                        this.smoothZoom(2.5);
                     } else if (tapLength < 300 && tapLength > 0 && this.scale > 1.1) {
                         e.preventDefault();
-                        this.reset(); // Asl holatga qaytish
+                        this.reset();
                     }
                     lastTap = currentTime;
                 });
+
+                // Desktop events
+                this.container.addEventListener('wheel', (e) => this.handleWheel(e), { passive: false });
+                this.container.addEventListener('mousedown', (e) => this.handleMouseDown(e));
+                this.container.addEventListener('mousemove', (e) => this.handleMouseMove(e));
+                this.container.addEventListener('mouseup', () => this.handleMouseUp());
+                this.container.addEventListener('mouseleave', () => this.handleMouseUp());
             }
 
-            handleStart(e) {
+            handleTouchStart(e) {
+                if (isDragging) {
+                    e.stopPropagation();
+                    return;
+                }
                 if (e.touches.length === 2) {
-                    // Pinch (Zoom) boshlanishi
                     e.preventDefault();
                     this.initialDist = Math.hypot(
                         e.touches[0].pageX - e.touches[1].pageX,
@@ -303,8 +308,7 @@
                     );
                     this.initialScale = this.scale;
                 } else if (e.touches.length === 1) {
-                    // Pan (Surish) boshlanishi
-                    if (this.scale > 1) { // Faqat zoom bo'lganda surish mumkin
+                    if (this.scale > 1) {
                         this.panning = true;
                         this.startX = e.touches[0].pageX - this.pointX;
                         this.startY = e.touches[0].pageY - this.pointY;
@@ -312,72 +316,109 @@
                 }
             }
 
-            handleMove(e) {
+            handleTouchMove(e) {
+                if (isDragging) {
+                    e.stopPropagation();
+                    return;
+                }
                 if (e.touches.length === 2) {
-                    // Zoom jarayoni
                     e.preventDefault();
                     const dist = Math.hypot(
                         e.touches[0].pageX - e.touches[1].pageX,
                         e.touches[0].pageY - e.touches[1].pageY
                     );
-                    
-                    // Yangi o'lchamni hisoblash
                     const delta = dist / this.initialDist;
                     let newScale = this.initialScale * delta;
-                    
-                    // Cheklovlar (Min 1x, Max 5x)
                     this.scale = Math.min(Math.max(1, newScale), 5);
-                    
-                    // Zoom paytida markazlashtirish (soddalashtirilgan)
                     this.updateTransform();
-                    
-                    // Sliderni bloklash uchun signal
-                    window.isZoomed = this.scale > 1.05;
-                    updateSliderLock();
-
                 } else if (e.touches.length === 1 && this.panning) {
-                    // Surish jarayoni
                     e.preventDefault();
                     let newX = e.touches[0].pageX - this.startX;
                     let newY = e.touches[0].pageY - this.startY;
-                    
-                    // Chegaralarni hisoblash (Boundaries)
                     const rect = this.container.getBoundingClientRect();
                     const maxTranslateX = (rect.width * this.scale - rect.width) / 2;
                     const maxTranslateY = (rect.height * this.scale - rect.height) / 2;
-                    
-                    // Rasmni ekrandan chiqib ketishini oldini olish
-                    if(maxTranslateX > 0) {
+                    if (maxTranslateX > 0) {
                         this.pointX = Math.min(Math.max(newX, -maxTranslateX), maxTranslateX);
                     } else { this.pointX = 0; }
-                    
-                    if(maxTranslateY > 0) {
+                    if (maxTranslateY > 0) {
                         this.pointY = Math.min(Math.max(newY, -maxTranslateY), maxTranslateY);
                     } else { this.pointY = 0; }
-                    
                     this.updateTransform();
                 }
             }
 
-            handleEnd(e) {
+            handleTouchEnd(e) {
                 this.panning = false;
-                
-                // Agar zoom juda kichik bo'lsa (1 dan kichik), joyiga qaytarish
                 if (this.scale < 1.1) {
                     this.reset();
                 }
-                
-                // Oxirgi holatni saqlab qolish (muhim!)
                 this.lastScale = this.scale;
                 this.lastPointX = this.pointX;
                 this.lastPointY = this.pointY;
-                
-                window.isZoomed = this.scale > 1.05;
-                updateSliderLock();
+            }
+
+            handleWheel(e) {
+                if (this.scale === 1 && e.deltaY > 0) return;
+                e.preventDefault();
+                const rect = this.container.getBoundingClientRect();
+                const offsetX = e.clientX - rect.left;
+                const offsetY = e.clientY - rect.top;
+                const prevX = (offsetX - this.pointX) / this.scale;
+                const prevY = (offsetY - this.pointY) / this.scale;
+                const factor = e.deltaY < 0 ? 1.2 : 0.8;
+                this.scale = Math.min(Math.max(1, this.scale * factor), 5);
+                this.pointX = offsetX - prevX * this.scale;
+                this.pointY = offsetY - prevY * this.scale;
+                const maxTranslateX = (rect.width * this.scale - rect.width) / 2;
+                const maxTranslateY = (rect.height * this.scale - rect.height) / 2;
+                this.pointX = Math.min(Math.max(this.pointX, -maxTranslateX), maxTranslateX);
+                this.pointY = Math.min(Math.max(this.pointY, -maxTranslateY), maxTranslateY);
+                this.updateTransform();
+            }
+
+            handleMouseDown(e) {
+                if (isDragging) {
+                    e.stopPropagation();
+                    return;
+                }
+                if (this.scale <= 1) return;
+                e.preventDefault();
+                this.panning = true;
+                this.startX = e.clientX - this.pointX;
+                this.startY = e.clientY - this.pointY;
+                this.container.style.cursor = 'grabbing';
+            }
+
+            handleMouseMove(e) {
+                if (!this.panning) return;
+                e.preventDefault();
+                let newX = e.clientX - this.startX;
+                let newY = e.clientY - this.startY;
+                const rect = this.container.getBoundingClientRect();
+                const maxTranslateX = (rect.width * this.scale - rect.width) / 2;
+                const maxTranslateY = (rect.height * this.scale - rect.height) / 2;
+                if (maxTranslateX > 0) {
+                    this.pointX = Math.min(Math.max(newX, -maxTranslateX), maxTranslateX);
+                } else { this.pointX = 0; }
+                if (maxTranslateY > 0) {
+                    this.pointY = Math.min(Math.max(newY, -maxTranslateY), maxTranslateY);
+                } else { this.pointY = 0; }
+                this.updateTransform();
+            }
+
+            handleMouseUp() {
+                this.panning = false;
+                this.container.style.cursor = 'default';
             }
 
             updateTransform() {
                 this.target.style.transform = `translate(${this.pointX}px, ${this.pointY}px) scale(${this.scale})`;
+                
+                // Side-by-side sinxronizatsiya
+                if (this.container.id.startsWith('side-wrapper') && currentMode === 'side') {
+                    syncZooms(this);
+                }
             }
 
             reset() {
@@ -385,8 +426,6 @@
                 this.pointX = 0;
                 this.pointY = 0;
                 this.updateTransform();
-                window.isZoomed = false;
-                updateSliderLock();
             }
             
             smoothZoom(targetScale) {
@@ -394,21 +433,17 @@
                 this.pointX = 0;
                 this.pointY = 0;
                 this.updateTransform();
-                window.isZoomed = true;
-                updateSliderLock();
             }
         }
 
-        // === GLOBAL STATES ===
-        window.isZoomed = false;
-        
-        function updateSliderLock() {
-            const wrapper = document.getElementById('view-slider');
-            if(window.isZoomed) {
-                wrapper.classList.add('slider-locked');
-            } else {
-                wrapper.classList.remove('slider-locked');
-            }
+        // === SIDE-BY-SIDE SINXRONIZATSIYA ===
+        let currentMode = 'slider';
+        function syncZooms(source) {
+            const target = source.container.id === 'side-wrapper-1' ? sideZoom2 : sideZoom1;
+            target.scale = source.scale;
+            target.pointX = source.pointX;
+            target.pointY = source.pointY;
+            target.updateTransform();
         }
 
         // === MODAL SETUP ===
@@ -419,13 +454,12 @@
         const imgAfter = document.getElementById('img-after');
         const loader = document.getElementById('modal-loader');
         
-        // Zoom controllers
         let sliderZoom, sideZoom1, sideZoom2;
 
         function initZooms() {
-            if(!sliderZoom) sliderZoom = new ZoomController('view-slider');
-            if(!sideZoom1) sideZoom1 = new ZoomController('side-wrapper-1');
-            if(!sideZoom2) sideZoom2 = new ZoomController('side-wrapper-2');
+            if (!sliderZoom) sliderZoom = new ZoomController('view-slider');
+            if (!sideZoom1) sideZoom1 = new ZoomController('side-wrapper-1');
+            if (!sideZoom2) sideZoom2 = new ZoomController('side-wrapper-2');
         }
 
         function openModal(proj) {
@@ -449,7 +483,7 @@
             document.getElementById('img-after').onload = () => {
                 loader.style.display = 'none';
                 initZooms();
-                if(sliderZoom) sliderZoom.reset();
+                if (sliderZoom) sliderZoom.reset();
             };
         }
 
@@ -458,9 +492,9 @@
             setTimeout(() => { 
                 modal.classList.add('hidden'); 
                 document.body.style.overflow = ''; 
-                if(sliderZoom) sliderZoom.reset();
-                if(sideZoom1) sideZoom1.reset();
-                if(sideZoom2) sideZoom2.reset();
+                if (sliderZoom) sliderZoom.reset();
+                if (sideZoom1) sideZoom1.reset();
+                if (sideZoom2) sideZoom2.reset();
             }, 300);
         }
 
@@ -468,9 +502,6 @@
         let isDragging = false;
         
         function updateSliderPosition(clientX) {
-            // Agar rasm zoom qilingan bo'lsa, slider ishlamaydi
-            if (window.isZoomed) return;
-
             const rect = sliderView.getBoundingClientRect();
             let x = ((clientX - rect.left) / rect.width) * 100;
             x = Math.max(0, Math.min(100, x));
@@ -479,33 +510,35 @@
         }
 
         // Slider Events
-        handle.addEventListener('mousedown', () => isDragging = true);
+        handle.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            e.stopPropagation();
+        });
         handle.addEventListener('touchstart', (e) => { 
-            if(!window.isZoomed) isDragging = true; 
+            isDragging = true; 
+            e.stopPropagation();
         }, {passive: false});
 
         window.addEventListener('mouseup', () => isDragging = false);
         window.addEventListener('touchend', () => isDragging = false);
 
         sliderView.addEventListener('mousemove', (e) => {
-            if(isDragging && !window.isZoomed) updateSliderPosition(e.clientX);
+            if (isDragging) updateSliderPosition(e.clientX);
         });
         
         sliderView.addEventListener('touchmove', (e) => {
-            if(isDragging && !window.isZoomed && e.touches.length === 1) {
-                // Ehtiyot chorasi: agar zoom bo'lmagan bo'lsa, sliderni surishga ruxsat
-                // Lekin brauzer scrollini to'xtatmaslik kerak (agar kerak bo'lsa)
-                // Bu yerda slider uchun preventDefault qilmaymiz, chunki zoom class o'zi handle qiladi
+            if (isDragging && e.touches.length === 1) {
                 updateSliderPosition(e.touches[0].clientX);
             }
         }, {passive: true});
 
         sliderView.addEventListener('click', (e) => {
-            if(!window.isZoomed) updateSliderPosition(e.clientX);
+            updateSliderPosition(e.clientX);
         });
 
         // === VIEW MODES ===
         function setMode(mode) {
+            currentMode = mode;
             const activeClass = "bg-[#333] text-white";
             const inactiveClass = "text-gray-500 hover:text-white";
             const mobActive = "text-white border-b border-white";
@@ -517,35 +550,16 @@
                 document.getElementById('btn-side').className = `px-3 py-1 text-xs rounded ${inactiveClass}`;
                 document.getElementById('mob-btn-slider').className = `text-xs font-medium pb-0.5 ${mobActive}`;
                 document.getElementById('mob-btn-side').className = `text-xs font-medium pb-0.5 ${mobInactive}`;
-                if(sliderZoom) sliderZoom.reset();
+                if (sliderZoom) sliderZoom.reset();
             } else {
                 sliderView.classList.add('hidden'); sideView.classList.remove('hidden');
                 document.getElementById('btn-slider').className = `px-3 py-1 text-xs rounded ${inactiveClass}`;
                 document.getElementById('btn-side').className = `px-3 py-1 text-xs rounded ${activeClass}`;
                 document.getElementById('mob-btn-slider').className = `text-xs font-medium pb-0.5 ${mobInactive}`;
                 document.getElementById('mob-btn-side').className = `text-xs font-medium pb-0.5 ${mobActive}`;
-                if(sideZoom1) sideZoom1.reset();
-                if(sideZoom2) sideZoom2.reset();
+                if (sideZoom1) sideZoom1.reset();
+                if (sideZoom2) sideZoom2.reset();
             }
-        }
-        
-        // Desktop Hover Zoom (faqat sichqoncha borlar uchun)
-        if (window.matchMedia("(pointer: fine)").matches) {
-            const syncContainer = document.getElementById('view-side');
-            syncContainer.addEventListener('mousemove', (e) => {
-                const rect = syncContainer.getBoundingClientRect();
-                const x = ((e.clientX - rect.left) / rect.width) * 100;
-                const y = ((e.clientY - rect.top) / rect.height) * 100;
-                document.querySelectorAll('#view-side .zoom-container img').forEach(img => {
-                    img.style.transformOrigin = `${x}% ${y}%`;
-                    img.style.transform = "scale(2)";
-                });
-            });
-            syncContainer.addEventListener('mouseleave', () => {
-                document.querySelectorAll('#view-side .zoom-container img').forEach(img => {
-                    img.style.transform = "scale(1)";
-                });
-            });
         }
 
         renderFilters();
