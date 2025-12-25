@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>AI Visual Enhancement | Portfolio</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -13,7 +13,7 @@
             font-family: 'Inter', sans-serif; 
             -webkit-font-smoothing: antialiased;
             overflow-x: hidden;
-            overscroll-behavior: none;
+            overscroll-behavior: none; /* Sahifa "rezina" bo'lib cho'zilishini to'xtatadi */
         }
 
         ::-webkit-scrollbar { width: 6px; }
@@ -26,14 +26,16 @@
             height: 100%;
             overflow: hidden;
             background: #000;
-            touch-action: none; /* Muhim: Brauzerning standart harakatlarini bloklaydi */
+            touch-action: none; /* Brauzer scrollini o'chiradi */
         }
 
-        /* Zoom bo'ladigan konteyner */
+        /* Zoom konteyneri */
         .zoom-container {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             transform-origin: center center;
             will-change: transform;
+            /* Animatsiya silliq bo'lishi uchun */
+            transition: transform 0.1s cubic-bezier(0.1, 0.57, 0.1, 1); 
         }
 
         .comparison-wrapper img {
@@ -50,9 +52,9 @@
             transform: translateX(-50%);
         }
 
-        /* Telefonda sliderni ushlash oson bo'lishi uchun ko'rinmas kengaytirgich */
+        /* Telefonda oson ushlash uchun zona */
         .slider-handle::after {
-            content: ''; position: absolute; top: 0; bottom: 0; left: -20px; right: -20px;
+            content: ''; position: absolute; top: 0; bottom: 0; left: -25px; right: -25px;
             background: transparent;
         }
         
@@ -62,10 +64,13 @@
             background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.8);
             backdrop-filter: blur(4px);
             display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 0 15px rgba(0,0,0,0.5);
             transition: transform 0.1s;
-            box-shadow: 0 0 10px rgba(0,0,0,0.5);
         }
         .slider-handle:active .slider-circle { transform: translate(-50%, -50%) scale(1.1); }
+
+        /* Agar rasm zoom qilingan bo'lsa, sliderni yashirish yoki xira qilish mumkin (ixtiyoriy) */
+        .slider-locked .slider-handle { opacity: 0.3; pointer-events: none; }
 
         .loader {
             width: 30px; height: 30px; border: 2px solid #333; 
@@ -169,7 +174,7 @@
     </div>
 
     <script>
-        // Data va Filterlar
+        // === PROJECT DATA ===
         const categories = [
             { id: 'all', name: 'All' },
             { id: 'portrait', name: 'Portraits' },
@@ -200,6 +205,7 @@
             { category: "portrait", before: "images/old/18.webp", after: "images/enhanced/18.webp" },
         ];
 
+        // === GALEREYA FUNKSIYALARI ===
         function renderFilters() {
             const container = document.getElementById('category-filters');
             container.innerHTML = categories.map(cat => `
@@ -242,11 +248,13 @@
             renderGallery(catId);
         }
 
-        // --- MUKAMMAL ZOOM & TOUCH TIZIMI ---
-        class TouchZoom {
-            constructor(wrapperId, targetId) {
-                this.wrapper = document.getElementById(wrapperId);
-                this.target = document.querySelector(`#${wrapperId} .zoom-container`);
+        // === YANGILANGAN ZOOM ENGINE (Google Maps Style) ===
+        class ZoomController {
+            constructor(containerId) {
+                this.container = document.getElementById(containerId);
+                this.target = this.container.querySelector('.zoom-container');
+                
+                // State variables (Holat o'zgaruvchilari)
                 this.scale = 1;
                 this.panning = false;
                 this.pointX = 0;
@@ -254,108 +262,156 @@
                 this.startX = 0;
                 this.startY = 0;
                 
+                // Zoom holati
+                this.lastScale = 1;
+                this.lastPointX = 0;
+                this.lastPointY = 0;
+                
                 this.init();
             }
 
             init() {
-                this.wrapper.addEventListener('touchstart', (e) => this.handleTouchStart(e), { passive: false });
-                this.wrapper.addEventListener('touchmove', (e) => this.handleTouchMove(e), { passive: false });
-                this.wrapper.addEventListener('touchend', (e) => this.handleTouchEnd(e));
+                // Eventlarni ulash
+                this.container.addEventListener('touchstart', (e) => this.handleStart(e), { passive: false });
+                this.container.addEventListener('touchmove', (e) => this.handleMove(e), { passive: false });
+                this.container.addEventListener('touchend', (e) => this.handleEnd(e));
                 
-                // Double tap
+                // Double tap (Ikki marta bosish)
                 let lastTap = 0;
-                this.wrapper.addEventListener('touchend', (e) => {
+                this.container.addEventListener('touchend', (e) => {
+                    if (e.changedTouches.length === 0) return;
                     const currentTime = new Date().getTime();
                     const tapLength = currentTime - lastTap;
-                    if (tapLength < 300 && tapLength > 0) {
+                    if (tapLength < 300 && tapLength > 0 && Math.abs(this.scale - 1) < 0.1) {
                         e.preventDefault();
-                        this.resetZoom();
+                        this.smoothZoom(2.5); // 2.5x ga yaqinlashish
+                    } else if (tapLength < 300 && tapLength > 0 && this.scale > 1.1) {
+                        e.preventDefault();
+                        this.reset(); // Asl holatga qaytish
                     }
                     lastTap = currentTime;
                 });
             }
 
-            handleTouchStart(e) {
+            handleStart(e) {
                 if (e.touches.length === 2) {
-                    // Zoom boshlanishi
-                    e.preventDefault(); 
-                    this.startDist = Math.hypot(
+                    // Pinch (Zoom) boshlanishi
+                    e.preventDefault();
+                    this.initialDist = Math.hypot(
                         e.touches[0].pageX - e.touches[1].pageX,
                         e.touches[0].pageY - e.touches[1].pageY
                     );
-                    this.startScale = this.scale;
-                } else if (e.touches.length === 1 && this.scale > 1) {
-                    // Pan (surish) boshlanishi faqat rasm kattalashgan bo'lsa
-                    this.panning = true;
-                    this.startX = e.touches[0].pageX - this.pointX;
-                    this.startY = e.touches[0].pageY - this.pointY;
+                    this.initialScale = this.scale;
+                } else if (e.touches.length === 1) {
+                    // Pan (Surish) boshlanishi
+                    if (this.scale > 1) { // Faqat zoom bo'lganda surish mumkin
+                        this.panning = true;
+                        this.startX = e.touches[0].pageX - this.pointX;
+                        this.startY = e.touches[0].pageY - this.pointY;
+                    }
                 }
             }
 
-            handleTouchMove(e) {
+            handleMove(e) {
                 if (e.touches.length === 2) {
-                    e.preventDefault(); // Sahifa zoomini bloklash
-                    // Zoom hisoblash
+                    // Zoom jarayoni
+                    e.preventDefault();
                     const dist = Math.hypot(
                         e.touches[0].pageX - e.touches[1].pageX,
                         e.touches[0].pageY - e.touches[1].pageY
                     );
                     
-                    this.scale = Math.min(Math.max(1, this.startScale * (dist / this.startDist)), 5);
+                    // Yangi o'lchamni hisoblash
+                    const delta = dist / this.initialDist;
+                    let newScale = this.initialScale * delta;
+                    
+                    // Cheklovlar (Min 1x, Max 5x)
+                    this.scale = Math.min(Math.max(1, newScale), 5);
+                    
+                    // Zoom paytida markazlashtirish (soddalashtirilgan)
                     this.updateTransform();
+                    
+                    // Sliderni bloklash uchun signal
+                    window.isZoomed = this.scale > 1.05;
+                    updateSliderLock();
 
-                    // Agar rasm zoom bo'lsa, slider ishlamasligi uchun flag
-                    window.isZooming = this.scale > 1.1;
-
-                } else if (e.touches.length === 1 && this.panning && this.scale > 1) {
-                    e.preventDefault(); // Sahifa scrollini bloklash
-                    this.pointX = e.touches[0].pageX - this.startX;
-                    this.pointY = e.touches[0].pageY - this.startY;
-                    this.limitPan();
+                } else if (e.touches.length === 1 && this.panning) {
+                    // Surish jarayoni
+                    e.preventDefault();
+                    let newX = e.touches[0].pageX - this.startX;
+                    let newY = e.touches[0].pageY - this.startY;
+                    
+                    // Chegaralarni hisoblash (Boundaries)
+                    const rect = this.container.getBoundingClientRect();
+                    const maxTranslateX = (rect.width * this.scale - rect.width) / 2;
+                    const maxTranslateY = (rect.height * this.scale - rect.height) / 2;
+                    
+                    // Rasmni ekrandan chiqib ketishini oldini olish
+                    if(maxTranslateX > 0) {
+                        this.pointX = Math.min(Math.max(newX, -maxTranslateX), maxTranslateX);
+                    } else { this.pointX = 0; }
+                    
+                    if(maxTranslateY > 0) {
+                        this.pointY = Math.min(Math.max(newY, -maxTranslateY), maxTranslateY);
+                    } else { this.pointY = 0; }
+                    
                     this.updateTransform();
                 }
             }
 
-            handleTouchEnd(e) {
-                if (e.touches.length < 2) {
-                    this.panning = false;
-                    if(this.scale <= 1.1) {
-                        this.resetZoom();
-                        window.isZooming = false;
-                    }
-                }
-            }
-
-            limitPan() {
-                // Rasmni chegaradan chiqib ketmasligini ta'minlash
-                const rect = this.wrapper.getBoundingClientRect();
-                const maxX = (rect.width * this.scale - rect.width) / 2;
-                const maxY = (rect.height * this.scale - rect.height) / 2;
+            handleEnd(e) {
+                this.panning = false;
                 
-                // Zoom center logicni soddalashtiramiz (CSS transform-origin: center)
-                // Translate chegaralari
-                // Sodda pan check:
-                if(this.scale > 1) {
-                   // Logika murakkab bo'lmasligi uchun erkin harakatga ruxsat beramiz, 
-                   // lekin juda uzoqqa ketmasligini tekshirish mumkin.
+                // Agar zoom juda kichik bo'lsa (1 dan kichik), joyiga qaytarish
+                if (this.scale < 1.1) {
+                    this.reset();
                 }
+                
+                // Oxirgi holatni saqlab qolish (muhim!)
+                this.lastScale = this.scale;
+                this.lastPointX = this.pointX;
+                this.lastPointY = this.pointY;
+                
+                window.isZoomed = this.scale > 1.05;
+                updateSliderLock();
             }
 
             updateTransform() {
                 this.target.style.transform = `translate(${this.pointX}px, ${this.pointY}px) scale(${this.scale})`;
             }
 
-            resetZoom() {
+            reset() {
                 this.scale = 1;
                 this.pointX = 0;
                 this.pointY = 0;
                 this.updateTransform();
-                window.isZooming = false;
+                window.isZoomed = false;
+                updateSliderLock();
+            }
+            
+            smoothZoom(targetScale) {
+                this.scale = targetScale;
+                this.pointX = 0;
+                this.pointY = 0;
+                this.updateTransform();
+                window.isZoomed = true;
+                updateSliderLock();
             }
         }
 
-        // --- MODAL & SLIDER LOGIKASI ---
+        // === GLOBAL STATES ===
+        window.isZoomed = false;
         
+        function updateSliderLock() {
+            const wrapper = document.getElementById('view-slider');
+            if(window.isZoomed) {
+                wrapper.classList.add('slider-locked');
+            } else {
+                wrapper.classList.remove('slider-locked');
+            }
+        }
+
+        // === MODAL SETUP ===
         const modal = document.getElementById('modal-container');
         const sliderView = document.getElementById('view-slider');
         const sideView = document.getElementById('view-side');
@@ -363,16 +419,13 @@
         const imgAfter = document.getElementById('img-after');
         const loader = document.getElementById('modal-loader');
         
-        let isDragging = false;
-        window.isZooming = false; // Global flag
-
-        // Zoom instansiyalarini saqlash
+        // Zoom controllers
         let sliderZoom, sideZoom1, sideZoom2;
 
         function initZooms() {
-            if(!sliderZoom) sliderZoom = new TouchZoom('view-slider', 'slider-zoom-area');
-            if(!sideZoom1) sideZoom1 = new TouchZoom('side-wrapper-1', 'side-wrapper-1');
-            if(!sideZoom2) sideZoom2 = new TouchZoom('side-wrapper-2', 'side-wrapper-2');
+            if(!sliderZoom) sliderZoom = new ZoomController('view-slider');
+            if(!sideZoom1) sideZoom1 = new ZoomController('side-wrapper-1');
+            if(!sideZoom2) sideZoom2 = new ZoomController('side-wrapper-2');
         }
 
         function openModal(proj) {
@@ -386,7 +439,7 @@
             
             setMode('slider');
             
-            // Reset Slider Position
+            // Reset position
             handle.style.left = '50%';
             imgAfter.style.clipPath = 'inset(0 0 0 50%)';
             
@@ -396,7 +449,7 @@
             document.getElementById('img-after').onload = () => {
                 loader.style.display = 'none';
                 initZooms();
-                sliderZoom.resetZoom();
+                if(sliderZoom) sliderZoom.reset();
             };
         }
 
@@ -405,15 +458,18 @@
             setTimeout(() => { 
                 modal.classList.add('hidden'); 
                 document.body.style.overflow = ''; 
-                if(sliderZoom) sliderZoom.resetZoom();
-                if(sideZoom1) sideZoom1.resetZoom();
-                if(sideZoom2) sideZoom2.resetZoom();
+                if(sliderZoom) sliderZoom.reset();
+                if(sideZoom1) sideZoom1.reset();
+                if(sideZoom2) sideZoom2.reset();
             }, 300);
         }
 
-        function updateSlider(clientX) {
-            // Agar rasm zoom qilingan bo'lsa, slider qimirlamasin
-            if (window.isZooming) return;
+        // === SLIDER LOGIC ===
+        let isDragging = false;
+        
+        function updateSliderPosition(clientX) {
+            // Agar rasm zoom qilingan bo'lsa, slider ishlamaydi
+            if (window.isZoomed) return;
 
             const rect = sliderView.getBoundingClientRect();
             let x = ((clientX - rect.left) / rect.width) * 100;
@@ -424,35 +480,31 @@
 
         // Slider Events
         handle.addEventListener('mousedown', () => isDragging = true);
-        handle.addEventListener('touchstart', () => isDragging = true);
-        
+        handle.addEventListener('touchstart', (e) => { 
+            if(!window.isZoomed) isDragging = true; 
+        }, {passive: false});
+
         window.addEventListener('mouseup', () => isDragging = false);
         window.addEventListener('touchend', () => isDragging = false);
-        
+
         sliderView.addEventListener('mousemove', (e) => {
-            if(isDragging) updateSlider(e.clientX);
+            if(isDragging && !window.isZoomed) updateSliderPosition(e.clientX);
         });
         
-        // Slider click jump
-        sliderView.addEventListener('click', (e) => {
-             // Handle click only if not zooming
-             if(!window.isZooming) updateSlider(e.clientX);
-        });
-        
-        // Touch move slider uchun
-        sliderView.addEventListener('touchmove', (e) => { 
-            // Agar foydalanuvchi zoom qilayotgan bo'lsa (2 barmoq) yoki rasm zoom qilingan bo'lsa, sliderni qimirlatma
-            if(e.touches.length > 1 || window.isZooming) {
-                isDragging = false;
-                return;
+        sliderView.addEventListener('touchmove', (e) => {
+            if(isDragging && !window.isZoomed && e.touches.length === 1) {
+                // Ehtiyot chorasi: agar zoom bo'lmagan bo'lsa, sliderni surishga ruxsat
+                // Lekin brauzer scrollini to'xtatmaslik kerak (agar kerak bo'lsa)
+                // Bu yerda slider uchun preventDefault qilmaymiz, chunki zoom class o'zi handle qiladi
+                updateSliderPosition(e.touches[0].clientX);
             }
-            if(isDragging) { 
-                // e.preventDefault(); // Zooming logikasi bilan konflikt qilmasligi uchun ehtiyot bo'lish kerak
-                updateSlider(e.touches[0].clientX); 
-            } 
+        }, {passive: true});
+
+        sliderView.addEventListener('click', (e) => {
+            if(!window.isZoomed) updateSliderPosition(e.clientX);
         });
 
-
+        // === VIEW MODES ===
         function setMode(mode) {
             const activeClass = "bg-[#333] text-white";
             const inactiveClass = "text-gray-500 hover:text-white";
@@ -465,48 +517,36 @@
                 document.getElementById('btn-side').className = `px-3 py-1 text-xs rounded ${inactiveClass}`;
                 document.getElementById('mob-btn-slider').className = `text-xs font-medium pb-0.5 ${mobActive}`;
                 document.getElementById('mob-btn-side').className = `text-xs font-medium pb-0.5 ${mobInactive}`;
+                if(sliderZoom) sliderZoom.reset();
             } else {
                 sliderView.classList.add('hidden'); sideView.classList.remove('hidden');
                 document.getElementById('btn-slider').className = `px-3 py-1 text-xs rounded ${inactiveClass}`;
                 document.getElementById('btn-side').className = `px-3 py-1 text-xs rounded ${activeClass}`;
                 document.getElementById('mob-btn-slider').className = `text-xs font-medium pb-0.5 ${mobInactive}`;
                 document.getElementById('mob-btn-side').className = `text-xs font-medium pb-0.5 ${mobActive}`;
-                
-                // Side viewga o'tganda zoomlarni reset qilish
-                if(sideZoom1) sideZoom1.resetZoom();
-                if(sideZoom2) sideZoom2.resetZoom();
+                if(sideZoom1) sideZoom1.reset();
+                if(sideZoom2) sideZoom2.reset();
             }
         }
-
-        // Desktop uchun eski hover effekti (faqat sichqoncha bor qurilmalarda ishlaydi)
-        const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
         
-        if (!isTouchDevice) {
+        // Desktop Hover Zoom (faqat sichqoncha borlar uchun)
+        if (window.matchMedia("(pointer: fine)").matches) {
             const syncContainer = document.getElementById('view-side');
-            const syncImgs = [document.getElementById('sync-old'), document.getElementById('sync-new')];
-
             syncContainer.addEventListener('mousemove', (e) => {
                 const rect = syncContainer.getBoundingClientRect();
                 const x = ((e.clientX - rect.left) / rect.width) * 100;
                 const y = ((e.clientY - rect.top) / rect.height) * 100;
-                
-                // Faqat rasm konteynerlari ichidagi rasmlarga ta'sir qilish
                 document.querySelectorAll('#view-side .zoom-container img').forEach(img => {
                     img.style.transformOrigin = `${x}% ${y}%`;
                     img.style.transform = "scale(2)";
-                    img.style.transition = "transform 0.1s ease-out";
                 });
             });
-
             syncContainer.addEventListener('mouseleave', () => {
                 document.querySelectorAll('#view-side .zoom-container img').forEach(img => {
                     img.style.transform = "scale(1)";
-                    img.style.transition = "transform 0.3s ease-out";
                 });
             });
         }
-
-        document.addEventListener('keydown', (e) => { if(e.key === 'Escape') closeModal(); });
 
         renderFilters();
         renderGallery();
