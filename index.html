@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Visual Enhancement | Portfolio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        body { 
+            background-color: #050505; 
+            color: #ffffff; 
+            font-family: 'Inter', sans-serif; 
+            -webkit-font-smoothing: antialiased;
+            overflow-x: hidden;
+        }
+
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #050505; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+        
+        .comparison-wrapper {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+        }
+
+        .comparison-wrapper img {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            object-fit: contain;
+            user-select: none; pointer-events: none;
+        }
+
+        .img-enhanced { clip-path: inset(0 0 0 50%); will-change: clip-path; }
+
+        .slider-handle {
+            position: absolute; top: 0; bottom: 0; left: 50%; width: 1px;
+            background: rgba(255,255,255,0.5); cursor: ew-resize; z-index: 20;
+            transform: translateX(-50%);
+        }
+        
+        .slider-circle {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 44px; height: 44px; border-radius: 50%;
+            background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.8);
+            backdrop-filter: blur(4px);
+            display: flex; align-items: center; justify-content: center;
+            transition: transform 0.1s;
+        }
+        .slider-handle:active .slider-circle { transform: translate(-50%, -50%) scale(1.1); }
+
+        .loader {
+            width: 30px; height: 30px; border: 2px solid #333; 
+            border-top: 2px solid #fff; border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+
+        .nav-pill { transition: all 0.2s; }
+        .nav-pill.active { background: #333; color: #fff; }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen">
+
+    <nav class="w-full px-6 py-6 flex justify-between items-center max-w-7xl mx-auto w-full z-10">
+        <div class="flex items-center gap-2 select-none">
+            <img src="images/logo.webp" alt="Logo" class="w-[35px] h-[35px] object-contain">
+        </div>
+        
+        <div>
+            <a href="https://www.fiverr.com/grafshop" target="_blank" class="text-xs font-medium text-gray-400 hover:text-white border border-[#222] px-4 py-2 rounded-full transition-all hover:bg-[#111]">
+                Profile
+            </a>
+        </div>
+    </nav>
+
+    <header class="text-center mt-8 mb-12 px-4 z-10">
+        <h1 class="text-3xl md:text-5xl font-medium tracking-tight mb-8 text-white">
+            Gallery
+        </h1>
+        
+        <div id="category-filters" class="flex flex-wrap justify-center bg-[#111] p-1 rounded-2xl md:rounded-full gap-1 border border-[#222] max-w-fit mx-auto">
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 md:px-6 pb-20 w-full grow z-10">
+        <div id="gallery-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        </div>
+    </main>
+
+    <footer class="border-t border-[#1a1a1a] py-8 text-center text-gray-600 text-xs mt-auto">
+        <p>&copy; 2024 Ozodbek Goziyev.</p>
+    </footer>
+
+    <div id="modal-container" class="fixed inset-0 z-50 hidden opacity-0 transition-opacity duration-300 bg-black">
+        <div class="flex flex-col w-full h-[100dvh]"> 
+            <div class="flex justify-between items-center px-6 py-4 bg-black/80 backdrop-blur-md z-50 border-b border-white/5 absolute top-0 w-full md:relative md:bg-black">
+                <h3 class="text-sm font-medium text-gray-200">Comparison View</h3>
+                <div class="flex items-center gap-6">
+                    <div class="hidden md:flex bg-[#111] rounded-lg p-1 border border-[#222]">
+                        <button onclick="setMode('slider')" id="btn-slider" class="px-3 py-1 text-xs rounded text-white bg-[#333]">Slider</button>
+                        <button onclick="setMode('side')" id="btn-side" class="px-3 py-1 text-xs rounded text-gray-500 hover:text-white">Side-by-Side</button>
+                    </div>
+                    <button onclick="closeModal()" class="group flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+                        <span class="hidden md:inline text-xs font-mono group-hover:underline">CLOSE</span>
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="relative w-full flex-grow overflow-hidden bg-black flex items-center justify-center">
+                <div id="modal-loader" class="absolute inset-0 flex items-center justify-center z-40 bg-black"><div class="loader"></div></div>
+                
+                <div id="view-slider" class="comparison-wrapper">
+                    <img id="img-before" src="" alt="Original">
+                    <img id="img-after" class="img-enhanced" src="" alt="Enhanced">
+                    
+                    <div class="absolute top-1/2 left-4 -translate-y-1/2 md:top-auto md:bottom-8 md:translate-y-0 bg-black/40 backdrop-blur px-3 py-1 text-[10px] font-bold tracking-widest text-white/50 border border-white/10 rounded pointer-events-none uppercase">Before</div>
+                    <div class="absolute top-1/2 right-4 -translate-y-1/2 md:top-auto md:bottom-8 md:translate-y-0 bg-blue-500/20 backdrop-blur px-3 py-1 text-[10px] font-bold tracking-widest text-blue-200 border border-blue-500/30 rounded pointer-events-none uppercase">After</div>
+
+                    <div class="slider-handle" id="slider-handle"><div class="slider-circle">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 8l4 4-4 4M7 8l-4 4 4 4"/></svg>
+                    </div></div>
+                </div>
+
+                <div id="view-side" class="hidden w-full h-full p-2 md:p-4 gap-2 md:gap-4 grid grid-cols-1 md:grid-cols-2">
+                    <div class="relative w-full h-full bg-[#0a0a0a] rounded overflow-hidden flex items-center justify-center">
+                        <img id="sync-old" src="" class="w-full h-full object-contain">
+                        <span class="absolute top-4 left-4 text-[10px] bg-black/70 text-white px-2 py-1 rounded border border-white/10 uppercase">Original</span>
+                    </div>
+                    <div class="relative w-full h-full bg-[#0a0a0a] rounded overflow-hidden flex items-center justify-center">
+                        <img id="sync-new" src="" class="w-full h-full object-contain">
+                        <span class="absolute top-4 left-4 text-[10px] bg-blue-900/70 text-white px-2 py-1 rounded border border-blue-500/20 uppercase">Enhanced</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="md:hidden flex justify-center p-4 bg-black border-t border-white/10 gap-4">
+                <button onclick="setMode('slider')" id="mob-btn-slider" class="text-xs text-white font-medium border-b border-white pb-0.5">Slider</button>
+                <button onclick="setMode('side')" id="mob-btn-side" class="text-xs text-gray-500 font-medium pb-0.5">Side-by-Side</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const categories = [
+            { id: 'all', name: 'All' },
+            { id: 'portrait', name: 'Portraits' },
+            { id: 'product', name: 'Products' },
+            { id: 'nature', name: 'Landscapes' },
+            { id: 'night', name: 'Low-Light' },
+            { id: 'low', name: 'Other' }
+        ];
+
+        const projects = [
+            { category: "portrait", before: "images/old/1.webp", after: "images/enhanced/1.webp" },
+            { category: "all", before: "images/old/2.webp", after: "images/enhanced/2.webp" },
+            { category: "night", before: "images/old/3.webp", after: "images/enhanced/3.webp" },
+            { category: "portrait", before: "images/old/4.webp", after: "images/enhanced/4.webp" },
+            { category: "nature", before: "images/old/5.webp", after: "images/enhanced/5.webp" },
+            { category: "all", before: "images/old/6.webp", after: "images/enhanced/6.webp" },
+            { category: "low", before: "images/old/7.webp", after: "images/enhanced/7.webp" },
+            { category: "low", before: "images/old/8.webp", after: "images/enhanced/8.webp" },
+            { category: "nature", before: "images/old/9.webp", after: "images/enhanced/9.webp" },
+            { category: "portrait", before: "images/old/10.webp", after: "images/enhanced/10.webp" },
+            { category: "product", before: "images/old/11.webp", after: "images/enhanced/11.webp" },
+            { category: "product", before: "images/old/12.webp", after: "images/enhanced/12.webp" },
+            { category: "nature", before: "images/old/13.webp", after: "images/enhanced/13.webp" },
+            { category: "night", before: "images/old/14.webp", after: "images/enhanced/14.webp" },
+            { category: "night", before: "images/old/15.webp", after: "images/enhanced/15.webp" },
+            { category: "night", before: "images/old/16.webp", after: "images/enhanced/16.webp" },
+            { category: "portrait", before: "images/old/17.webp", after: "images/enhanced/17.webp" },
+            { category: "portrait", before: "images/old/18.webp", after: "images/enhanced/18.webp" },
+        ];
+
+        function renderFilters() {
+            const container = document.getElementById('category-filters');
+            container.innerHTML = categories.map(cat => `
+                <button onclick="filterGallery('${cat.id}')" 
+                        class="nav-pill ${cat.id === 'all' ? 'active text-white' : 'text-gray-400'} px-4 py-2 rounded-full text-xs font-medium hover:text-white">
+                    ${cat.name}
+                </button>
+            `).join('');
+        }
+
+        function renderGallery(filter = 'all') {
+            const grid = document.getElementById('gallery-grid');
+            grid.innerHTML = '';
+            const filtered = filter === 'all' ? projects : projects.filter(p => p.category === filter);
+
+            filtered.forEach(proj => {
+                const div = document.createElement('div');
+                div.className = "group cursor-pointer";
+                div.onclick = () => openModal(proj);
+                div.innerHTML = `
+                    <div class="relative w-full aspect-[3/2] overflow-hidden bg-[#111] rounded border border-[#222] group-hover:border-[#444] transition-colors">
+                        <img src="${proj.before}" class="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500">
+                        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                            <span class="text-xs text-white border border-white/20 bg-black/50 px-4 py-1.5 rounded-full backdrop-blur-sm">Compare</span>
+                        </div>
+                    </div>
+                `;
+                grid.appendChild(div);
+            });
+        }
+
+        function filterGallery(catId) {
+            document.querySelectorAll('.nav-pill').forEach(btn => {
+                btn.classList.remove('active', 'text-white');
+                btn.classList.add('text-gray-400');
+                if(btn.textContent.trim() === categories.find(c => c.id === catId).name) {
+                    btn.classList.add('active', 'text-white');
+                }
+            });
+            renderGallery(catId);
+        }
+
+        const modal = document.getElementById('modal-container');
+        const sliderView = document.getElementById('view-slider');
+        const sideView = document.getElementById('view-side');
+        const handle = document.getElementById('slider-handle');
+        const imgAfter = document.getElementById('img-after');
+        const loader = document.getElementById('modal-loader');
+        let isDragging = false;
+
+        function openModal(proj) {
+            document.getElementById('img-before').src = proj.before;
+            document.getElementById('img-after').src = proj.after;
+            document.getElementById('sync-old').src = proj.before;
+            document.getElementById('sync-new').src = proj.after;
+            modal.classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+            setMode('slider');
+            handle.style.left = '50%';
+            imgAfter.style.clipPath = 'inset(0 0 0 50%)';
+            loader.style.display = 'flex';
+            setTimeout(() => modal.classList.remove('opacity-0'), 10);
+            document.getElementById('img-after').onload = () => loader.style.display = 'none';
+        }
+
+        function closeModal() {
+            modal.classList.add('opacity-0');
+            setTimeout(() => { modal.classList.add('hidden'); document.body.style.overflow = ''; }, 300);
+        }
+
+        function updateSlider(clientX) {
+            const rect = sliderView.getBoundingClientRect();
+            let x = ((clientX - rect.left) / rect.width) * 100;
+            x = Math.max(0, Math.min(100, x));
+            handle.style.left = x + '%';
+            imgAfter.style.clipPath = `inset(0 0 0 ${x}%)`;
+        }
+
+        sliderView.addEventListener('mousedown', () => isDragging = true);
+        window.addEventListener('mouseup', () => isDragging = false);
+        sliderView.addEventListener('mousemove', (e) => isDragging && updateSlider(e.clientX));
+        sliderView.addEventListener('click', (e) => updateSlider(e.clientX));
+        
+        // Touch support
+        sliderView.addEventListener('touchstart', (e) => { isDragging = true; updateSlider(e.touches[0].clientX); });
+        sliderView.addEventListener('touchmove', (e) => { if(isDragging) { e.preventDefault(); updateSlider(e.touches[0].clientX); } });
+        sliderView.addEventListener('touchend', () => isDragging = false);
+
+        function setMode(mode) {
+            const activeClass = "bg-[#333] text-white";
+            const inactiveClass = "text-gray-500 hover:text-white";
+            const mobActive = "text-white border-b border-white";
+            const mobInactive = "text-gray-500";
+
+            if (mode === 'slider') {
+                sliderView.classList.remove('hidden'); sideView.classList.add('hidden');
+                document.getElementById('btn-slider').className = `px-3 py-1 text-xs rounded ${activeClass}`;
+                document.getElementById('btn-side').className = `px-3 py-1 text-xs rounded ${inactiveClass}`;
+                document.getElementById('mob-btn-slider').className = `text-xs font-medium pb-0.5 ${mobActive}`;
+                document.getElementById('mob-btn-side').className = `text-xs font-medium pb-0.5 ${mobInactive}`;
+            } else {
+                sliderView.classList.add('hidden'); sideView.classList.remove('hidden');
+                document.getElementById('btn-slider').className = `px-3 py-1 text-xs rounded ${inactiveClass}`;
+                document.getElementById('btn-side').className = `px-3 py-1 text-xs rounded ${activeClass}`;
+                document.getElementById('mob-btn-slider').className = `text-xs font-medium pb-0.5 ${mobInactive}`;
+                document.getElementById('mob-btn-side').className = `text-xs font-medium pb-0.5 ${mobActive}`;
+            }
+        }
+
+        // Synchronized Zoom Logic
+        const syncContainer = document.getElementById('view-side');
+        const syncImgs = [document.getElementById('sync-old'), document.getElementById('sync-new')];
+
+        syncContainer.addEventListener('mousemove', (e) => {
+            const rect = syncContainer.getBoundingClientRect();
+            const x = ((e.clientX - rect.left) / rect.width) * 100;
+            const y = ((e.clientY - rect.top) / rect.height) * 100;
+            syncImgs.forEach(img => {
+                img.style.transformOrigin = `${x}% ${y}%`;
+                img.style.transform = "scale(2.5)";
+                img.style.transition = "transform 0.1s ease-out";
+            });
+        });
+
+        syncContainer.addEventListener('mouseleave', () => {
+            syncImgs.forEach(img => {
+                img.style.transform = "scale(1)";
+                img.style.transition = "transform 0.3s ease-out";
+            });
+        });
+
+        document.addEventListener('keydown', (e) => { if(e.key === 'Escape') closeModal(); });
+
+        renderFilters();
+        renderGallery();
+    </script>
+</body>
+</html>
