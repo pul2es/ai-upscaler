@@ -503,10 +503,23 @@
         
         function updateSliderPosition(clientX) {
             const rect = sliderView.getBoundingClientRect();
-            let x = ((clientX - rect.left) / rect.width) * 100;
-            x = Math.max(0, Math.min(100, x));
-            handle.style.left = x + '%';
-            imgAfter.style.clipPath = `inset(0 0 0 ${x}%)`;
+            let screen_x = clientX - rect.left;
+            screen_x = Math.max(0, Math.min(rect.width, screen_x));
+
+            const W = rect.width;
+            const cx = W / 2;
+            const s = sliderZoom ? sliderZoom.scale : 1;
+            const tx = sliderZoom ? sliderZoom.pointX : 0;
+
+            const original_x = (screen_x - tx - cx) / s + cx;
+            let f = original_x / W;
+            f = Math.max(0, Math.min(1, f));
+
+            const clip_percent = f * 100;
+            const handle_percent = (screen_x / W) * 100;
+
+            handle.style.left = handle_percent + '%';
+            imgAfter.style.clipPath = `inset(0 0 0 ${clip_percent}%)`;
         }
 
         // Slider Events
