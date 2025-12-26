@@ -280,7 +280,7 @@
                     if (tapLength < 300 && tapLength > 0 && Math.abs(this.scale - 1) < 0.1) {
                         e.preventDefault();
                         this.smoothZoom(2.5);
-                    } else if (tapLength < 300 && tapLength > 0 && this.scale > 1.1) {
+                    } else if (tapLength < 300 && tapLength > 0 && this.scale > 1.01) {  // O'zgartirildi: 1.1 dan 1.01 ga
                         e.preventDefault();
                         this.reset();
                     }
@@ -350,6 +350,7 @@
 
             handleTouchEnd(e) {
                 this.panning = false;
+                // Bu qism olib tashlandi: if (this.scale < 1.1) { this.reset(); }
                 this.lastScale = this.scale;
                 this.lastPointX = this.pointX;
                 this.lastPointY = this.pointY;
