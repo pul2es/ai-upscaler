@@ -166,6 +166,8 @@
             <div class="md:hidden flex justify-center p-4 bg-black border-t border-white/10 gap-4 z-50">
                 <button onclick="setMode('slider')" id="mob-btn-slider" class="text-xs text-white font-medium border-b border-white pb-0.5">Slider</button>
                 <button onclick="setMode('side')" id="mob-btn-side" class="text-xs text-gray-500 font-medium pb-0.5">Side-by-Side</button>
+                <button onclick="zoomIn()" class="text-xs text-white font-medium px-3 py-1 rounded bg-[#333]">+</button>
+                <button onclick="zoomOut()" class="text-xs text-white font-medium px-3 py-1 rounded bg-[#333]">-</button>
             </div>
         </div>
     </div>
@@ -570,6 +572,27 @@
                 document.getElementById('mob-btn-side').className = `text-xs font-medium pb-0.5 ${mobActive}`;
                 if (sideZoom1) sideZoom1.reset();
                 if (sideZoom2) sideZoom2.reset();
+            }
+        }
+
+        // === MOBILE ZOOM BUTTONS ===
+        function zoomIn() {
+            if (currentMode === 'slider' && sliderZoom) {
+                sliderZoom.scale = Math.min(5, sliderZoom.scale * 1.2);
+                sliderZoom.updateTransform();
+            } else if (currentMode === 'side' && sideZoom1) {
+                sideZoom1.scale = Math.min(5, sideZoom1.scale * 1.2);
+                sideZoom1.updateTransform();
+            }
+        }
+
+        function zoomOut() {
+            if (currentMode === 'slider' && sliderZoom) {
+                sliderZoom.scale = Math.max(1, sliderZoom.scale * 0.8);
+                sliderZoom.updateTransform();
+            } else if (currentMode === 'side' && sideZoom1) {
+                sideZoom1.scale = Math.max(1, sideZoom1.scale * 0.8);
+                sideZoom1.updateTransform();
             }
         }
 
