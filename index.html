@@ -350,9 +350,6 @@
 
             handleTouchEnd(e) {
                 this.panning = false;
-                if (this.scale < 1.1) {
-                    this.reset();
-                }
                 this.lastScale = this.scale;
                 this.lastPointX = this.pointX;
                 this.lastPointY = this.pointY;
